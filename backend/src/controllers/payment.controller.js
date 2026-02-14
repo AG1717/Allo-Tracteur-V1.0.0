@@ -361,3 +361,109 @@ exports.getAdminPaymentStats = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Initier un remboursement
+// @route   POST /api/payments/:id/refund
+// @access  Private/Admin
+exports.initiateRefund = async (req, res, next) => {
+  try {
+    const { amount, reason } = req.body;
+    const payment = await Payment.findById(req.params.id).populate('booking');
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Paiement non trouvé'
+      });
+    }
+
+    if (payment.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Seuls les paiements complétés peuvent être remboursés'
+      });
+    }
+
+    if (payment.status === 'refunded') {
+      return res.status(400).json({
+        success: false,
+        message: 'Ce paiement a déjà été remboursé'
+      });
+    }
+
+    // Vérifier le montant du remboursement
+    const refundAmount = amount || payment.amount;
+    if (refundAmount > payment.amount) {
+      return res.status(400).json({
+        success: false,
+        message: 'Le montant du remboursement ne peut pas dépasser le montant du paiement'
+      });
+    }
+
+    // Mettre à jour le paiement
+    payment.status = 'refunded';
+    payment.refund = {
+      amount: refundAmount,
+      reason: reason || 'Remboursement demandé par l\'administrateur',
+      refundedAt: new Date(),
+      refundReference: `REF-${Date.now()}`
+    };
+    payment.statusHistory.push({
+      status: 'refunded',
+      note: reason || 'Remboursement effectué'
+    });
+    await payment.save();
+
+    // Mettre à jour le statut de la réservation si nécessaire
+    if (payment.booking) {
+      const booking = await Booking.findById(payment.booking);
+      if (booking) {
+        booking.addStatusChange('cancelled', req.user.id, 'Réservation annulée suite au remboursement');
+        await booking.save();
+      }
+    }
+
+    // Notifier le client
+    await Notification.createNotification(
+      payment.payer,
+      'payment_refunded',
+      'Remboursement effectué',
+      `Un remboursement de ${refundAmount} FCFA a été effectué sur votre paiement`,
+      { paymentId: payment._id, bookingId: payment.booking }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Remboursement effectué avec succès',
+      data: payment
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Obtenir les détails d'un paiement
+// @route   GET /api/payments/:id
+// @access  Private/Admin
+exports.getPaymentDetails = async (req, res, next) => {
+  try {
+    const payment = await Payment.findById(req.params.id)
+      .populate('booking')
+      .populate('payer', 'nom prenom email telephone')
+      .populate('recipient', 'nom prenom email telephone');
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Paiement non trouvé'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: payment
+    });
+  } catch (error) {
+    next(error);
+  }
+};

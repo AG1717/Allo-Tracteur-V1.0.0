@@ -8,16 +8,16 @@ const {
   updateUserRole,
   getUserStats
 } = require('../controllers/user.controller');
-const { protect, authorize } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 
 // Routes protégées
-router.put('/profile', protect, updateProfile);
+router.put('/profile', auth, updateProfile);
 
 // Routes admin
-router.get('/', protect, authorize('admin'), getUsers);
-router.get('/stats', protect, authorize('admin'), getUserStats);
-router.get('/:id', protect, authorize('admin'), getUser);
-router.put('/:id/toggle-active', protect, authorize('admin'), toggleUserActive);
-router.put('/:id/role', protect, authorize('admin'), updateUserRole);
+router.get('/', auth, authorize('admin'), getUsers);
+router.get('/stats', auth, authorize('admin'), getUserStats);
+router.get('/:id', auth, authorize('admin'), getUser);
+router.put('/:id/toggle-active', auth, authorize('admin'), toggleUserActive);
+router.put('/:id/role', auth, authorize('admin'), updateUserRole);
 
 module.exports = router;

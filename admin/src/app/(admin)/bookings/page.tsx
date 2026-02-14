@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import StatusBadge from '@/components/StatusBadge';
-import { bookings as initialBookings, Booking, updateBooking } from '@/lib/mock-data';
+import { getAllBookings, updateBookingStatus, type Booking } from '@/lib/api';
 import {
   MagnifyingGlassIcon,
   EyeIcon,
@@ -19,7 +19,8 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function BookingsPage() {
-  const [bookings, setBookings] = useState<Booking[]>(initialBookings);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
@@ -29,12 +30,34 @@ export default function BookingsPage() {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [bookingToAction, setBookingToAction] = useState<Booking | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Charger les réservations depuis l'API
+  useEffect(() => {
+    loadBookings();
+  }, []);
+
+  const loadBookings = async () => {
+    try {
+      setLoading(true);
+      const data = await getAllBookings();
+      setBookings(data);
+    } catch (error) {
+      console.error('Erreur chargement bookings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredBookings = bookings.filter((booking) => {
+    const tractorName = booking.tractor?.nom || '';
+    const clientName = `${booking.client?.prenom || ''} ${booking.client?.nom || ''}`.trim();
+    const ownerName = `${booking.owner?.prenom || ''} ${booking.owner?.nom || ''}`.trim();
+
     const matchesSearch =
-      booking.tractorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.ownerName.toLowerCase().includes(searchTerm.toLowerCase());
+      tractorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ownerName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || booking.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -43,7 +66,8 @@ export default function BookingsPage() {
     return new Intl.NumberFormat('fr-FR').format(price) + ' FCFA';
   };
 
-  const formatDate = (date: string) => {
+  const formatDate = (date?: string) => {
+    if (!date) return 'N/A';
     return new Date(date).toLocaleDateString('fr-FR', {
       day: 'numeric',
       month: 'short',
@@ -53,7 +77,7 @@ export default function BookingsPage() {
 
   // Stats
   const pendingCount = bookings.filter(b => b.status === 'pending').length;
-  const confirmedCount = bookings.filter(b => b.status === 'confirmed').length;
+  const acceptedCount = bookings.filter(b => b.status === 'accepted').length;
   const inProgressCount = bookings.filter(b => b.status === 'in_progress').length;
   const completedCount = bookings.filter(b => b.status === 'completed').length;
 
@@ -73,43 +97,76 @@ export default function BookingsPage() {
     setIsCancelModalOpen(true);
   };
 
-  const handleConfirmBooking = () => {
-    if (bookingToAction) {
-      updateBooking(bookingToAction.id, { status: 'confirmed' });
-      setBookings(bookings.map(b =>
-        b.id === bookingToAction.id ? { ...b, status: 'confirmed' } : b
-      ));
+  const handleConfirmBooking = async () => {
+    if (!bookingToAction) return;
+
+    try {
+      setActionLoading(true);
+      await updateBookingStatus(bookingToAction._id, 'accepted');
+      await loadBookings(); // Recharger les données
       setIsConfirmModalOpen(false);
       setBookingToAction(null);
+    } catch (error) {
+      console.error('Erreur confirmation:', error);
+      alert('Erreur lors de la confirmation');
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const handleCancelBooking = () => {
-    if (bookingToAction) {
-      updateBooking(bookingToAction.id, { status: 'cancelled', paymentStatus: 'refunded' });
-      setBookings(bookings.map(b =>
-        b.id === bookingToAction.id ? { ...b, status: 'cancelled', paymentStatus: 'refunded' } : b
-      ));
+  const handleCancelBooking = async () => {
+    if (!bookingToAction) return;
+
+    try {
+      setActionLoading(true);
+      await updateBookingStatus(bookingToAction._id, 'cancelled');
+      await loadBookings(); // Recharger les données
       setIsCancelModalOpen(false);
       setBookingToAction(null);
+    } catch (error) {
+      console.error('Erreur annulation:', error);
+      alert('Erreur lors de l\'annulation');
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const handleChangeStatus = (booking: Booking, newStatus: Booking['status']) => {
-    updateBooking(booking.id, { status: newStatus });
-    setBookings(bookings.map(b =>
-      b.id === booking.id ? { ...b, status: newStatus } : b
-    ));
-    setIsViewModalOpen(false);
+  const handleChangeStatus = async (booking: Booking, newStatus: Booking['status']) => {
+    try {
+      setActionLoading(true);
+      await updateBookingStatus(booking._id, newStatus);
+      await loadBookings(); // Recharger les données
+      setIsViewModalOpen(false);
+    } catch (error) {
+      console.error('Erreur changement statut:', error);
+      alert('Erreur lors du changement de statut');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  const getDuration = (startDate: string, endDate: string) => {
+  const getDuration = (startDate?: string, endDate?: string) => {
+    if (!startDate || !endDate) return 0;
     const start = new Date(startDate);
     const end = new Date(endDate);
     const diffTime = Math.abs(end.getTime() - start.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
   };
+
+  if (loading) {
+    return (
+      <>
+        <Header title="Réservations" subtitle="Chargement..." />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-green-500 border-t-transparent"></div>
+            <p className="mt-2 text-slate-600">Chargement des réservations...</p>
+          </div>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>
@@ -138,8 +195,8 @@ export default function BookingsPage() {
                 <CheckCircleIcon className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-blue-700">{confirmedCount}</p>
-                <p className="text-sm text-blue-600">Confirmées</p>
+                <p className="text-2xl font-bold text-blue-700">{acceptedCount}</p>
+                <p className="text-sm text-blue-600">Acceptées</p>
               </div>
             </div>
           </div>
@@ -189,11 +246,18 @@ export default function BookingsPage() {
           >
             <option value="all">Tous les statuts</option>
             <option value="pending">En attente</option>
-            <option value="confirmed">Confirmées</option>
+            <option value="accepted">Acceptées</option>
             <option value="in_progress">En cours</option>
             <option value="completed">Terminées</option>
             <option value="cancelled">Annulées</option>
           </select>
+
+          <button
+            onClick={loadBookings}
+            className="rounded-lg bg-green-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-600 transition-colors"
+          >
+            Actualiser
+          </button>
         </div>
 
         {/* Table */}
@@ -212,7 +276,7 @@ export default function BookingsPage() {
                     Propriétaire
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    Période
+                    Surface
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
                     Montant
@@ -227,26 +291,27 @@ export default function BookingsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredBookings.map((booking) => (
-                  <tr key={booking.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={booking._id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
                       <div>
-                        <p className="font-medium text-slate-900">{booking.tractorName}</p>
-                        <p className="text-sm text-slate-500">#{booking.id}</p>
+                        <p className="font-medium text-slate-900">{booking.tractor?.nom || 'N/A'}</p>
+                        <p className="text-sm text-slate-500">#{booking._id.slice(-8)}</p>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm text-slate-900">{booking.clientName}</p>
+                      <p className="text-sm text-slate-900">
+                        {booking.client?.prenom} {booking.client?.nom}
+                      </p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm text-slate-900">{booking.ownerName}</p>
+                      <p className="text-sm text-slate-900">
+                        {booking.owner?.prenom} {booking.owner?.nom}
+                      </p>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 text-sm text-slate-600">
-                        <CalendarIcon className="h-4 w-4 text-slate-400" />
-                        <span>{formatDate(booking.startDate)}</span>
-                        <span>-</span>
-                        <span>{formatDate(booking.endDate)}</span>
-                      </div>
+                      <p className="text-sm text-slate-600">
+                        {booking.nombreHectares ? booking.nombreHectares.toFixed(2) : '0.00'} ha
+                      </p>
                     </td>
                     <td className="px-6 py-4">
                       <p className="font-semibold text-green-600">{formatPrice(booking.totalPrice)}</p>
@@ -268,7 +333,7 @@ export default function BookingsPage() {
                             <button
                               onClick={() => handleConfirmClick(booking)}
                               className="rounded-lg p-2 text-green-500 hover:bg-green-100 transition-colors"
-                              title="Confirmer"
+                              title="Accepter"
                             >
                               <CheckCircleIcon className="h-5 w-5" />
                             </button>
@@ -300,7 +365,7 @@ export default function BookingsPage() {
       {/* View Details Modal */}
       {isViewModalOpen && selectedBooking && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-slate-900">Détails de la réservation</h2>
               <button
@@ -318,8 +383,8 @@ export default function BookingsPage() {
                   <TruckIcon className="h-7 w-7 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">{selectedBooking.tractorName}</h3>
-                  <p className="text-sm text-slate-500">Réservation #{selectedBooking.id}</p>
+                  <h3 className="text-lg font-semibold text-slate-900">{selectedBooking.tractor?.nom}</h3>
+                  <p className="text-sm text-slate-500">#{selectedBooking._id.slice(-8)}</p>
                 </div>
                 <div className="ml-auto">
                   <StatusBadge status={selectedBooking.status} type="booking" />
@@ -333,25 +398,23 @@ export default function BookingsPage() {
                     <UserIcon className="h-4 w-4 text-slate-400" />
                     <p className="text-xs text-slate-500">Client</p>
                   </div>
-                  <p className="font-medium text-slate-900">{selectedBooking.clientName}</p>
+                  <p className="font-medium text-slate-900">
+                    {selectedBooking.client?.prenom} {selectedBooking.client?.nom}
+                  </p>
                 </div>
                 <div className="rounded-lg bg-slate-50 p-4">
                   <div className="flex items-center gap-2 mb-1">
                     <UserIcon className="h-4 w-4 text-slate-400" />
                     <p className="text-xs text-slate-500">Propriétaire</p>
                   </div>
-                  <p className="font-medium text-slate-900">{selectedBooking.ownerName}</p>
+                  <p className="font-medium text-slate-900">
+                    {selectedBooking.owner?.prenom} {selectedBooking.owner?.nom}
+                  </p>
                 </div>
                 <div className="rounded-lg bg-slate-50 p-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <CalendarIcon className="h-4 w-4 text-slate-400" />
-                    <p className="text-xs text-slate-500">Période</p>
-                  </div>
+                  <p className="text-xs text-slate-500 mb-1">Surface</p>
                   <p className="font-medium text-slate-900">
-                    {formatDate(selectedBooking.startDate)} - {formatDate(selectedBooking.endDate)}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    ({getDuration(selectedBooking.startDate, selectedBooking.endDate)} jours)
+                    {selectedBooking.nombreHectares ? selectedBooking.nombreHectares.toFixed(4) : '0.0000'} hectares
                   </p>
                 </div>
                 <div className="rounded-lg bg-slate-50 p-4">
@@ -363,24 +426,37 @@ export default function BookingsPage() {
                 </div>
               </div>
 
+              {/* Commission */}
+              <div className="rounded-lg bg-green-50 border border-green-200 p-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-xs text-green-600 font-medium">Commission plateforme (10%)</p>
+                    <p className="text-lg font-bold text-green-700">{formatPrice(selectedBooking.commission)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-green-600 font-medium">Gains propriétaire</p>
+                    <p className="text-lg font-bold text-green-700">{formatPrice(selectedBooking.ownerEarnings)}</p>
+                  </div>
+                </div>
+              </div>
+
               {/* Payment info */}
               <div className="rounded-lg bg-slate-50 p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-slate-500">Méthode de paiement</p>
-                    <p className="font-medium text-slate-900">{selectedBooking.paymentMethod || 'Non spécifié'}</p>
+                    <p className="font-medium text-slate-900">{selectedBooking.payment?.method || 'Non spécifié'}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-slate-500">Statut du paiement</p>
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      selectedBooking.paymentStatus === 'paid'
+                      selectedBooking.payment?.status === 'completed'
                         ? 'bg-green-100 text-green-800'
-                        : selectedBooking.paymentStatus === 'refunded'
+                        : selectedBooking.payment?.status === 'failed'
                         ? 'bg-red-100 text-red-800'
                         : 'bg-yellow-100 text-yellow-800'
                     }`}>
-                      {selectedBooking.paymentStatus === 'paid' ? 'Payé' :
-                       selectedBooking.paymentStatus === 'refunded' ? 'Remboursé' : 'En attente'}
+                      {selectedBooking.payment?.status || 'pending'}
                     </span>
                   </div>
                 </div>
@@ -393,16 +469,18 @@ export default function BookingsPage() {
                   <div className="flex flex-wrap gap-2">
                     {selectedBooking.status === 'pending' && (
                       <button
-                        onClick={() => handleChangeStatus(selectedBooking, 'confirmed')}
-                        className="rounded-lg bg-blue-100 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-200"
+                        onClick={() => handleChangeStatus(selectedBooking, 'accepted')}
+                        disabled={actionLoading}
+                        className="rounded-lg bg-blue-100 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-200 disabled:opacity-50"
                       >
-                        Confirmer
+                        Accepter
                       </button>
                     )}
-                    {selectedBooking.status === 'confirmed' && (
+                    {selectedBooking.status === 'accepted' && (
                       <button
                         onClick={() => handleChangeStatus(selectedBooking, 'in_progress')}
-                        className="rounded-lg bg-green-100 px-3 py-2 text-sm font-medium text-green-700 hover:bg-green-200"
+                        disabled={actionLoading}
+                        className="rounded-lg bg-green-100 px-3 py-2 text-sm font-medium text-green-700 hover:bg-green-200 disabled:opacity-50"
                       >
                         Démarrer
                       </button>
@@ -410,22 +488,22 @@ export default function BookingsPage() {
                     {selectedBooking.status === 'in_progress' && (
                       <button
                         onClick={() => handleChangeStatus(selectedBooking, 'completed')}
-                        className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                        disabled={actionLoading}
+                        className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
                       >
                         Terminer
                       </button>
                     )}
-                    {selectedBooking.status !== 'cancelled' && (
-                      <button
-                        onClick={() => {
-                          setIsViewModalOpen(false);
-                          handleCancelClick(selectedBooking);
-                        }}
-                        className="rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-200"
-                      >
-                        Annuler
-                      </button>
-                    )}
+                    <button
+                      onClick={() => {
+                        setIsViewModalOpen(false);
+                        handleCancelClick(selectedBooking);
+                      }}
+                      disabled={actionLoading}
+                      className="rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-200 disabled:opacity-50"
+                    >
+                      Annuler
+                    </button>
                   </div>
                 </div>
               )}
@@ -451,24 +529,26 @@ export default function BookingsPage() {
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
                 <CheckCircleIcon className="h-6 w-6 text-green-600" />
               </div>
-              <h2 className="text-lg font-semibold text-slate-900">Confirmer la réservation</h2>
+              <h2 className="text-lg font-semibold text-slate-900">Accepter la réservation</h2>
             </div>
             <p className="mb-6 text-slate-600">
-              Voulez-vous confirmer la réservation du tracteur <strong>{bookingToAction.tractorName}</strong> pour{' '}
-              <strong>{bookingToAction.clientName}</strong> ?
+              Voulez-vous accepter la réservation du tracteur <strong>{bookingToAction.tractor?.nom}</strong> pour{' '}
+              <strong>{bookingToAction.client?.prenom} {bookingToAction.client?.nom}</strong> ?
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setIsConfirmModalOpen(false)}
-                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                disabled={actionLoading}
+                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
                 Annuler
               </button>
               <button
                 onClick={handleConfirmBooking}
-                className="rounded-lg bg-green-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-600"
+                disabled={actionLoading}
+                className="rounded-lg bg-green-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-600 disabled:opacity-50"
               >
-                Confirmer
+                {actionLoading ? 'Traitement...' : 'Accepter'}
               </button>
             </div>
           </div>
@@ -486,21 +566,23 @@ export default function BookingsPage() {
               <h2 className="text-lg font-semibold text-slate-900">Annuler la réservation</h2>
             </div>
             <p className="mb-6 text-slate-600">
-              Êtes-vous sûr de vouloir annuler la réservation du tracteur <strong>{bookingToAction.tractorName}</strong> ?
-              Le client sera remboursé.
+              Êtes-vous sûr de vouloir annuler la réservation du tracteur <strong>{bookingToAction.tractor?.nom}</strong> ?
+              Le client devra être remboursé.
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setIsCancelModalOpen(false)}
-                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                disabled={actionLoading}
+                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
                 Retour
               </button>
               <button
                 onClick={handleCancelBooking}
-                className="rounded-lg bg-red-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-600"
+                disabled={actionLoading}
+                className="rounded-lg bg-red-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
               >
-                Annuler la réservation
+                {actionLoading ? 'Traitement...' : 'Annuler la réservation'}
               </button>
             </div>
           </div>

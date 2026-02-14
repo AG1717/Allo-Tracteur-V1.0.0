@@ -1,7 +1,8 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
-import { dashboardStats, bookingsByStatus, revenueByMonth } from '@/lib/mock-data';
+import { getDashboardStats, getRevenueByMonth, DashboardStats } from '@/lib/api';
 import { exportToCSV, exportToPDF } from '@/lib/export';
 import {
   ArrowDownTrayIcon,
@@ -13,43 +14,69 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function ReportsPage() {
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [revenueByMonth, setRevenueByMonth] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [stats, revenue] = await Promise.all([
+        getDashboardStats(),
+        getRevenueByMonth(),
+      ]);
+      setDashboardStats(stats);
+      setRevenueByMonth(revenue);
+    } catch (error) {
+      console.error('Erreur chargement données:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('fr-FR').format(price) + ' FCFA';
   };
 
-  const totalRevenue = revenueByMonth.reduce((sum, m) => sum + m.revenue, 0);
-  const totalBookings = bookingsByStatus.reduce((sum, b) => sum + b.count, 0);
+  if (loading || !dashboardStats) {
+    return (
+      <>
+        <Header title="Rapports" subtitle="Chargement..." />
+        <main className="flex-1 overflow-y-auto p-6">
+          <div className="text-center py-12">
+            <p className="text-slate-500">Chargement des rapports...</p>
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  const totalRevenue = revenueByMonth.reduce((sum, m) => sum + (m.revenue || 0), 0);
 
   // Export handlers
   const handleExportCSV = () => {
     const headers = [
       { key: 'metric', label: 'Métrique' },
       { key: 'value', label: 'Valeur' },
-      { key: 'change', label: 'Évolution' },
     ];
 
     const data = [
-      { metric: 'Utilisateurs totaux', value: dashboardStats.totalUsers, change: '+8.2%' },
-      { metric: 'Clients', value: dashboardStats.totalClients, change: '-' },
-      { metric: 'Propriétaires', value: dashboardStats.totalOwners, change: '-' },
-      { metric: 'Tracteurs actifs', value: dashboardStats.totalTractors, change: '+5.1%' },
-      { metric: 'Tracteurs disponibles', value: dashboardStats.availableTractors, change: '-' },
-      { metric: 'En attente approbation', value: dashboardStats.pendingApprovals, change: '-' },
-      { metric: 'Réservations totales', value: dashboardStats.totalBookings, change: '-' },
-      { metric: 'Réservations actives', value: dashboardStats.activeBookings, change: '-' },
-      { metric: 'Revenu total', value: formatPrice(dashboardStats.totalRevenue), change: '-' },
-      { metric: 'Revenu mensuel', value: formatPrice(dashboardStats.monthlyRevenue), change: `+${dashboardStats.revenueGrowth}%` },
-      { metric: 'Taux de conversion', value: '68%', change: '+2.3%' },
-      { metric: 'Valeur moyenne', value: formatPrice(176000), change: '-' },
+      { metric: 'Utilisateurs totaux', value: dashboardStats.totalUsers },
+      { metric: 'Clients', value: dashboardStats.totalClients },
+      { metric: 'Propriétaires', value: dashboardStats.totalOwners },
+      { metric: 'Tracteurs actifs', value: dashboardStats.totalTractors },
+      { metric: 'Tracteurs disponibles', value: dashboardStats.availableTractors },
+      { metric: 'En attente approbation', value: dashboardStats.pendingApprovals },
+      { metric: 'Réservations totales', value: dashboardStats.totalBookings },
+      { metric: 'Réservations actives', value: dashboardStats.activeBookings },
+      { metric: 'Revenu mensuel', value: formatPrice(dashboardStats.monthlyRevenue) },
       ...revenueByMonth.map(m => ({
         metric: `Revenu ${m.month}`,
-        value: formatPrice(m.revenue),
-        change: '-',
-      })),
-      ...bookingsByStatus.map(b => ({
-        metric: `Réservations ${b.status}`,
-        value: b.count,
-        change: '-',
+        value: formatPrice(m.revenue || 0),
       })),
     ];
 
@@ -60,14 +87,7 @@ export default function ReportsPage() {
     const revenueRows = revenueByMonth.map(m => `
       <tr>
         <td>${m.month}</td>
-        <td>${formatPrice(m.revenue)}</td>
-      </tr>
-    `).join('');
-
-    const bookingRows = bookingsByStatus.map(b => `
-      <tr>
-        <td><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${b.color};margin-right:8px;"></span>${b.status}</td>
-        <td>${b.count}</td>
+        <td>${formatPrice(m.revenue || 0)}</td>
       </tr>
     `).join('');
 
@@ -82,12 +102,12 @@ export default function ReportsPage() {
           <div class="stat-label">Tracteurs actifs</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value">68%</div>
-          <div class="stat-label">Taux de conversion</div>
+          <div class="stat-value">${dashboardStats.totalBookings}</div>
+          <div class="stat-label">Réservations totales</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value">${formatPrice(176000)}</div>
-          <div class="stat-label">Valeur moyenne</div>
+          <div class="stat-value">${formatPrice(dashboardStats.monthlyRevenue)}</div>
+          <div class="stat-label">Revenu mensuel</div>
         </div>
       </div>
 
@@ -105,17 +125,20 @@ export default function ReportsPage() {
         </tbody>
       </table>
 
-      <h2 style="margin-top:30px;color:#3b82f6;">Réservations par statut</h2>
-      <p style="color:#64748b;margin-bottom:15px;">Total: ${totalBookings} réservations</p>
+      <h2 style="margin-top:30px;color:#3b82f6;">Statistiques détaillées</h2>
       <table>
         <thead>
           <tr>
-            <th>Statut</th>
-            <th>Nombre</th>
+            <th>Métrique</th>
+            <th>Valeur</th>
           </tr>
         </thead>
         <tbody>
-          ${bookingRows}
+          <tr><td>Clients</td><td>${dashboardStats.totalClients}</td></tr>
+          <tr><td>Propriétaires</td><td>${dashboardStats.totalOwners}</td></tr>
+          <tr><td>Tracteurs disponibles</td><td>${dashboardStats.availableTractors}</td></tr>
+          <tr><td>En attente d'approbation</td><td>${dashboardStats.pendingApprovals}</td></tr>
+          <tr><td>Réservations actives</td><td>${dashboardStats.activeBookings}</td></tr>
         </tbody>
       </table>
     `;
@@ -180,50 +203,6 @@ export default function ReportsPage() {
                   <span className="w-32 text-right text-sm font-semibold text-slate-700">
                     {formatPrice(item.revenue)}
                   </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Bookings Report */}
-          <div className="rounded-xl bg-white p-6 shadow-sm border border-slate-100">
-            <div className="mb-6 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-blue-100 p-2">
-                  <CalendarIcon className="h-6 w-6 text-blue-600" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-900">Réservations</h2>
-                  <p className="text-sm text-slate-500">Répartition par statut</p>
-                </div>
-              </div>
-              <p className="text-2xl font-bold text-blue-600">{totalBookings}</p>
-            </div>
-
-            <div className="space-y-4">
-              {bookingsByStatus.map((item) => (
-                <div key={item.status} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="h-4 w-4 rounded-full"
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <span className="text-sm text-slate-600">{item.status}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="w-32 h-2 rounded-full bg-slate-100 overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${(item.count / 70) * 100}%`,
-                          backgroundColor: item.color,
-                        }}
-                      />
-                    </div>
-                    <span className="w-8 text-right text-sm font-semibold text-slate-700">
-                      {item.count}
-                    </span>
-                  </div>
                 </div>
               ))}
             </div>

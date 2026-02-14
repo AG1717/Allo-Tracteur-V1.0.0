@@ -27,17 +27,13 @@ const users = [
     email: 'mamadou.diop@email.com',
     telephone: '+221771234567',
     password: 'password123',
-    role: 'owner',
+    role: 'proprietaire',
+    adresse: 'Route de Rufisque, Dakar',
+    region: 'Dakar',
     isVerified: true,
-    rating: 4.8,
-    adresse: {
-      ville: 'Dakar',
-      region: 'Dakar'
-    },
-    bankInfo: {
-      orangeMoney: '+221771234567',
-      wave: '+221771234567'
-    }
+    isActive: true,
+    entreprise: 'Agri Services Diop',
+    description: 'Spécialiste en location de matériel agricole'
   },
   {
     nom: 'Ndiaye',
@@ -45,13 +41,13 @@ const users = [
     email: 'fatou.ndiaye@email.com',
     telephone: '+221776543210',
     password: 'password123',
-    role: 'owner',
+    role: 'proprietaire',
+    adresse: 'Zone agricole, Thiès',
+    region: 'Thiès',
     isVerified: true,
-    rating: 4.5,
-    adresse: {
-      ville: 'Thiès',
-      region: 'Thiès'
-    }
+    isActive: true,
+    entreprise: 'Tracteurs Ndiaye',
+    description: 'Location de tracteurs depuis 2015'
   },
   {
     nom: 'Sow',
@@ -60,8 +56,10 @@ const users = [
     telephone: '+221778889999',
     password: 'password123',
     role: 'client',
+    adresse: 'Parcelles Assainies, Dakar',
+    region: 'Dakar',
     isVerified: true,
-    rating: 4.2
+    isActive: true
   },
   {
     nom: 'Fall',
@@ -70,7 +68,10 @@ const users = [
     telephone: '+221772223333',
     password: 'password123',
     role: 'client',
-    isVerified: true
+    adresse: 'Mbour',
+    region: 'Thiès',
+    isVerified: true,
+    isActive: true
   },
   {
     nom: 'Admin',
@@ -79,126 +80,119 @@ const users = [
     telephone: '+221700000000',
     password: 'admin123',
     role: 'admin',
-    isVerified: true
+    adresse: 'Siège Allo Tracteur',
+    region: 'Dakar',
+    isVerified: true,
+    isActive: true
   }
 ];
 
 // Données tracteurs
 const tractorsData = [
   {
-    name: 'John Deere 5050D',
-    brand: 'John Deere',
-    model: '5050D',
-    type: 'TRACTOR',
-    power: 50,
-    year: 2020,
+    nom: 'John Deere 5050D',
+    marque: 'John Deere',
+    modele: '5050D',
+    annee: 2020,
+    puissance: 50,
     description: 'Tracteur polyvalent idéal pour les petites et moyennes exploitations. Parfait pour le labour, le transport et diverses tâches agricoles.',
-    features: ['Cabine climatisée', 'Direction assistée', '4 roues motrices', 'Attelage 3 points'],
-    pricePerHour: 5000,
-    pricePerDay: 35000,
-    location: {
-      type: 'Point',
-      coordinates: [-17.4677, 14.7167],
-      address: 'Route de Rufisque',
+    prixParHectare: 35000,
+    localisation: {
+      adresse: 'Route de Rufisque',
       ville: 'Dakar',
-      region: 'Dakar'
+      region: 'Dakar',
+      coordinates: {
+        latitude: 14.7167,
+        longitude: -17.4677
+      }
     },
-    isAvailable: true,
-    isApproved: true,
-    rating: 4.8,
-    totalReviews: 12
+    images: [
+      { url: 'https://example.com/john-deere-5050d.jpg', isPrimary: true }
+    ],
+    equipements: ['Cabine climatisée', 'Direction assistée', '4 roues motrices', 'Attelage 3 points'],
+    etat: 'excellent',
+    disponible: true,
+    isActive: true
   },
   {
-    name: 'Massey Ferguson 290',
-    brand: 'Massey Ferguson',
-    model: '290',
-    type: 'TRACTOR',
-    power: 80,
-    year: 2019,
+    nom: 'Massey Ferguson 290',
+    marque: 'Massey Ferguson',
+    modele: '290',
+    annee: 2019,
+    puissance: 80,
     description: 'Tracteur robuste et puissant pour les grandes exploitations. Excellent pour les travaux lourds.',
-    features: ['Moteur Perkins', '4x4', 'Hydraulique renforcé'],
-    pricePerHour: 7000,
-    pricePerDay: 45000,
-    location: {
-      type: 'Point',
-      coordinates: [-16.9260, 14.7645],
-      address: 'Zone agricole',
+    prixParHectare: 45000,
+    localisation: {
+      adresse: 'Zone agricole',
       ville: 'Thiès',
-      region: 'Thiès'
+      region: 'Thiès',
+      coordinates: { latitude: 14.7645, longitude: -16.9260 }
     },
-    isAvailable: true,
-    isApproved: true,
-    rating: 4.5,
-    totalReviews: 8
+    images: [{ url: 'https://example.com/massey-290.jpg', isPrimary: true }],
+    equipements: ['Moteur Perkins', '4x4', 'Hydraulique renforcé'],
+    etat: 'bon',
+    disponible: true,
+    isActive: true
   },
   {
-    name: 'New Holland TD5',
-    brand: 'New Holland',
-    model: 'TD5',
-    type: 'TRACTOR',
-    power: 65,
-    year: 2021,
+    nom: 'New Holland TD5',
+    marque: 'New Holland',
+    modele: 'TD5',
+    annee: 2021,
+    puissance: 65,
     description: 'Tracteur moderne avec technologie avancée. Économique en carburant.',
-    features: ['Économique', 'Cabine confort', 'Électronique embarquée'],
-    pricePerHour: 6000,
-    pricePerDay: 40000,
-    location: {
-      type: 'Point',
-      coordinates: [-17.4380, 14.6928],
-      address: 'Pikine',
+    prixParHectare: 40000,
+    localisation: {
+      adresse: 'Pikine',
       ville: 'Dakar',
-      region: 'Dakar'
+      region: 'Dakar',
+      coordinates: { latitude: 14.6928, longitude: -17.4380 }
     },
-    isAvailable: true,
-    isApproved: true,
-    rating: 4.9,
-    totalReviews: 5
+    images: [{ url: 'https://example.com/new-holland-td5.jpg', isPrimary: true }],
+    equipements: ['Économique', 'Cabine confort', 'Électronique embarquée'],
+    etat: 'excellent',
+    disponible: true,
+    isActive: true
   },
   {
-    name: 'Kubota L4508',
-    brand: 'Kubota',
-    model: 'L4508',
-    type: 'TRACTOR',
-    power: 45,
-    year: 2022,
+    nom: 'Kubota L4508',
+    marque: 'Kubota',
+    modele: 'L4508',
+    annee: 2022,
+    puissance: 45,
     description: 'Petit tracteur japonais fiable et économique. Idéal pour le maraîchage.',
-    features: ['Compact', 'Économique', 'Fiable'],
-    pricePerHour: 4000,
-    pricePerDay: 28000,
-    location: {
-      type: 'Point',
-      coordinates: [-16.0169, 16.4896],
-      address: 'Zone agricole',
+    prixParHectare: 28000,
+    localisation: {
+      adresse: 'Zone agricole',
       ville: 'Saint-Louis',
-      region: 'Saint-Louis'
+      region: 'Saint-Louis',
+      coordinates: { latitude: 16.4896, longitude: -16.0169 }
     },
-    isAvailable: true,
-    isApproved: true,
-    rating: 4.6,
-    totalReviews: 3
+    images: [{ url: 'https://example.com/kubota-l4508.jpg', isPrimary: true }],
+    equipements: ['Compact', 'Économique', 'Fiable'],
+    etat: 'bon',
+    disponible: true,
+    isActive: true
   },
   {
-    name: 'Case IH Farmall',
-    brand: 'Case IH',
-    model: 'Farmall 75A',
-    type: 'TRACTOR',
-    power: 75,
-    year: 2020,
+    nom: 'Case IH Farmall',
+    marque: 'Case IH',
+    modele: 'Farmall 75A',
+    annee: 2020,
+    puissance: 75,
     description: 'Tracteur polyvalent américain. Grande fiabilité.',
-    features: ['Transmission hydrostatique', 'Relevage avant', 'Chargeur frontal'],
-    pricePerHour: 6500,
-    pricePerDay: 42000,
-    location: {
-      type: 'Point',
-      coordinates: [-14.6928, 16.0041],
-      address: 'Zone agricole',
+    prixParHectare: 42000,
+    localisation: {
+      adresse: 'Zone agricole',
       ville: 'Kaolack',
-      region: 'Kaolack'
+      region: 'Kaolack',
+      coordinates: { latitude: 16.0041, longitude: -14.6928 }
     },
-    isAvailable: false,
-    isApproved: true,
-    rating: 4.4,
-    totalReviews: 7
+    images: [{ url: 'https://example.com/case-ih-farmall.jpg', isPrimary: true }],
+    equipements: ['Transmission hydrostatique', 'Relevage avant', 'Chargeur frontal'],
+    etat: 'bon',
+    disponible: false,
+    isActive: true
   }
 ];
 
@@ -206,13 +200,10 @@ const seed = async () => {
   try {
     await connectDB();
 
-    // Nettoyer la base
+    // Nettoyer complètement la base
     console.log('Nettoyage de la base de données...');
-    await User.deleteMany({});
-    await Tractor.deleteMany({});
-    await Booking.deleteMany({});
-    await Payment.deleteMany({});
-    await Review.deleteMany({});
+    await mongoose.connection.dropDatabase();
+    console.log('Base de données supprimée et recréée');
 
     // Créer les utilisateurs
     console.log('Création des utilisateurs...');
@@ -220,7 +211,7 @@ const seed = async () => {
     console.log(`${createdUsers.length} utilisateurs créés`);
 
     // Récupérer les propriétaires
-    const owners = createdUsers.filter(u => u.role === 'owner');
+    const owners = createdUsers.filter(u => u.role === 'proprietaire');
 
     // Créer les tracteurs
     console.log('Création des tracteurs...');
@@ -240,30 +231,39 @@ const seed = async () => {
         client: clients[0]._id,
         tractor: createdTractors[0]._id,
         owner: createdTractors[0].owner,
+        clientPhone: clients[0].telephone,
+        ownerPhone: owners[0].telephone,
         startDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         endDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
-        duration: 3,
+        prixParHectare: 35000,
+        nombreJours: 3,
+        totalPrice: 105000,
+        commission: 10500,
+        ownerEarnings: 94500,
         status: 'pending',
-        pricing: {
-          basePrice: 105000,
-          platformFee: 10500,
-          ownerAmount: 94500,
-          totalPrice: 105000
+        payment: {
+          method: 'orange_money',
+          status: 'pending'
         }
       },
       {
         client: clients[1]._id,
         tractor: createdTractors[1]._id,
         owner: createdTractors[1].owner,
+        clientPhone: clients[1].telephone,
+        ownerPhone: owners[1 % owners.length].telephone,
         startDate: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
         endDate: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000),
-        duration: 2,
+        prixParHectare: 45000,
+        nombreJours: 2,
+        totalPrice: 90000,
+        commission: 9000,
+        ownerEarnings: 81000,
         status: 'completed',
-        pricing: {
-          basePrice: 90000,
-          platformFee: 9000,
-          ownerAmount: 81000,
-          totalPrice: 90000
+        payment: {
+          method: 'wave',
+          status: 'completed',
+          paidAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)
         }
       }
     ];

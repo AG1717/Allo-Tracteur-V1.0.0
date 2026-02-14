@@ -1,7 +1,8 @@
 'use client';
 
-import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, UserCircleIcon } from '@heroicons/react/24/outline';
 import NotificationDropdown from './NotificationDropdown';
+import { useAuth } from '@/context/AuthContext';
 
 interface HeaderProps {
   title: string;
@@ -9,6 +10,8 @@ interface HeaderProps {
 }
 
 export default function Header({ title, subtitle }: HeaderProps) {
+  const { user } = useAuth();
+
   return (
     <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6">
       <div>
@@ -29,6 +32,19 @@ export default function Header({ title, subtitle }: HeaderProps) {
 
         {/* Notifications */}
         <NotificationDropdown />
+
+        {/* User Profile */}
+        {user && (
+          <div className="flex items-center gap-2 border-l border-slate-200 pl-4">
+            <UserCircleIcon className="h-8 w-8 text-slate-400" />
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-slate-900">
+                {user.prenom} {user.nom}
+              </span>
+              <span className="text-xs text-slate-500">{user.role}</span>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );

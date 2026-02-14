@@ -9,7 +9,16 @@ const PLATFORM_FEE_PERCENT = 10; // 10% de commission
 // @access  Private/Client
 exports.createBooking = async (req, res, next) => {
   try {
-    const { tractorId, startDate, endDate, notes, pickupLocation, deliveryLocation } = req.body;
+    const {
+      tractorId,
+      startDate,
+      endDate,
+      nombreHectares,
+      surfaceMetresCarres,
+      notes,
+      clientPhone,
+      paymentMethod
+    } = req.body;
 
     // Vérifier que le tracteur existe et est disponible
     const tractor = await Tractor.findById(tractorId).populate('owner');
@@ -28,69 +37,77 @@ exports.createBooking = async (req, res, next) => {
       });
     }
 
-    // Vérifier la disponibilité pour la période
-    if (!tractor.isAvailableForPeriod(startDate, endDate)) {
+    // Vérifier que la surface est fournie
+    if (!nombreHectares || nombreHectares <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Le nombre d\'hectares est requis'
+      });
+    }
+
+    // Vérifier la disponibilité pour la période (optionnel pour planification)
+    if (startDate && endDate && !tractor.isAvailableForPeriod(startDate, endDate)) {
       return res.status(400).json({
         success: false,
         message: 'Ce tracteur est déjà réservé pour cette période'
       });
     }
 
-    // Calculer la durée et le prix
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const duration = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-
-    if (duration < 1) {
-      return res.status(400).json({
-        success: false,
-        message: 'La durée minimale est de 1 jour'
-      });
+    // Calculer la durée (pour planification uniquement, si dates fournies)
+    let nombreJours = null;
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      nombreJours = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
     }
 
-    const basePrice = tractor.pricePerDay * duration;
+    // Calculer le prix basé uniquement sur la surface
+    const basePrice = tractor.prixParHectare * nombreHectares;
     const platformFee = Math.round(basePrice * PLATFORM_FEE_PERCENT / 100);
     const ownerAmount = basePrice - platformFee;
 
     // Créer la réservation
-    const booking = await Booking.create({
+    const bookingData = {
       client: req.user.id,
       tractor: tractorId,
       owner: tractor.owner._id,
-      startDate: start,
-      endDate: end,
-      duration,
-      pricing: {
-        basePrice,
-        platformFee,
-        ownerAmount,
-        totalPrice: basePrice
+      nombreHectares,
+      prixParHectare: tractor.prixParHectare,
+      totalPrice: basePrice,
+      commission: platformFee,
+      ownerEarnings: ownerAmount,
+      clientPhone: clientPhone || req.user.telephone,
+      ownerPhone: tractor.owner.telephone,
+      payment: {
+        method: paymentMethod || 'orange_money',
+        status: 'pending'
       },
-      location: {
-        pickup: pickupLocation,
-        delivery: deliveryLocation
-      },
-      notes: {
-        client: notes
-      },
-      statusHistory: [{
-        status: 'pending',
-        changedBy: req.user.id,
-        note: 'Réservation créée'
-      }]
-    });
+      notes
+    };
+
+    // Ajouter les dates si fournies
+    if (startDate) bookingData.startDate = new Date(startDate);
+    if (endDate) bookingData.endDate = new Date(endDate);
+    if (nombreJours) bookingData.nombreJours = nombreJours;
+
+    // Ajouter surfaceMetresCarres si fourni
+    if (surfaceMetresCarres) {
+      bookingData.surfaceMetresCarres = surfaceMetresCarres;
+    }
+
+    const booking = await Booking.create(bookingData);
 
     // Notifier le propriétaire
     await Notification.createNotification(
       tractor.owner._id,
       'booking_request',
       'Nouvelle demande de réservation',
-      `${req.user.prenom} ${req.user.nom} souhaite réserver ${tractor.name}`,
+      `${req.user.prenom} ${req.user.nom} souhaite réserver ${tractor.nom}`,
       { bookingId: booking._id }
     );
 
     const populatedBooking = await Booking.findById(booking._id)
-      .populate('tractor', 'name brand images pricePerDay')
+      .populate('tractor', 'nom marque images prixParHectare')
       .populate('client', 'nom prenom telephone')
       .populate('owner', 'nom prenom telephone');
 
@@ -115,7 +132,7 @@ exports.getMyBookings = async (req, res, next) => {
     if (status) query.status = status;
 
     const bookings = await Booking.find(query)
-      .populate('tractor', 'name brand images pricePerDay location')
+      .populate('tractor', 'nom marque images prixParHectare localisation')
       .populate('owner', 'nom prenom telephone rating')
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
@@ -146,7 +163,7 @@ exports.getReceivedRequests = async (req, res, next) => {
     if (status) query.status = status;
 
     const bookings = await Booking.find(query)
-      .populate('tractor', 'name brand images pricePerDay')
+      .populate('tractor', 'nom marque images prixParHectare')
       .populate('client', 'nom prenom telephone email rating')
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
@@ -174,8 +191,7 @@ exports.getBooking = async (req, res, next) => {
     const booking = await Booking.findById(req.params.id)
       .populate('tractor')
       .populate('client', 'nom prenom telephone email rating')
-      .populate('owner', 'nom prenom telephone email rating')
-      .populate('payment');
+      .populate('owner', 'nom prenom telephone email rating');
 
     if (!booking) {
       return res.status(404).json({
@@ -502,48 +518,60 @@ exports.completeBooking = async (req, res, next) => {
 };
 
 // @desc    Statistiques des réservations
-// @route   GET /api/bookings/stats
-// @access  Private/Admin
+// @route   GET /api/bookings/admin/stats
+// @access  Private/Owner,Admin
 exports.getBookingStats = async (req, res, next) => {
   try {
+    // Filtrer par propriétaire si ce n'est pas un admin
+    const matchFilter = {};
+    if (req.user.role !== 'admin') {
+      matchFilter.owner = req.user._id;
+    }
+
     const stats = await Booking.aggregate([
+      { $match: matchFilter },
       {
         $group: {
           _id: '$status',
           count: { $sum: 1 },
-          totalRevenue: { $sum: '$pricing.totalPrice' }
+          totalRevenue: { $sum: '$totalPrice' }
         }
       }
     ]);
 
-    const total = await Booking.countDocuments();
+    const total = await Booking.countDocuments(matchFilter);
     const thisMonth = await Booking.countDocuments({
+      ...matchFilter,
       createdAt: { $gte: new Date(new Date().setDate(1)) }
     });
 
-    const revenueThisMonth = await Booking.aggregate([
-      {
-        $match: {
-          status: 'completed',
-          createdAt: { $gte: new Date(new Date().setDate(1)) }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: '$pricing.totalPrice' },
-          platformFees: { $sum: '$pricing.platformFee' }
-        }
+    // Transformer byStatus en format plat pour le mobile
+    const statusCounts = {
+      pending: 0,
+      confirmed: 0,
+      in_progress: 0,
+      completed: 0,
+      cancelled: 0,
+      rejected: 0,
+    };
+    let totalRevenue = 0;
+    stats.forEach((s) => {
+      if (statusCounts.hasOwnProperty(s._id)) {
+        statusCounts[s._id] = s.count;
       }
-    ]);
+      if (s._id === 'completed') {
+        totalRevenue = s.totalRevenue || 0;
+      }
+    });
 
     res.status(200).json({
       success: true,
       data: {
         total,
         thisMonth,
+        ...statusCounts,
+        totalRevenue,
         byStatus: stats,
-        revenue: revenueThisMonth[0] || { total: 0, platformFees: 0 }
       }
     });
   } catch (error) {

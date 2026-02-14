@@ -1,155 +1,131 @@
 const mongoose = require('mongoose');
 
-const TractorSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: [true, 'Le nom du tracteur est requis'],
-    trim: true,
-    maxlength: [100, 'Le nom ne peut pas dépasser 100 caractères']
-  },
-  brand: {
-    type: String,
-    required: [true, 'La marque est requise'],
-    trim: true
-  },
-  model: {
-    type: String,
-    trim: true
-  },
-  type: {
-    type: String,
-    enum: ['TRACTOR', 'HARVESTER', 'PLOUGH', 'SEEDER', 'SPRAYER', 'OTHER'],
-    default: 'TRACTOR'
-  },
-  power: {
-    type: Number,
-    required: [true, 'La puissance (CV) est requise'],
-    min: [1, 'La puissance doit être positive']
-  },
-  year: {
-    type: Number,
-    min: [1950, 'Année invalide'],
-    max: [new Date().getFullYear() + 1, 'Année invalide']
-  },
-  description: {
-    type: String,
-    maxlength: [1000, 'La description ne peut pas dépasser 1000 caractères']
-  },
-  features: [{
-    type: String
-  }],
-  images: [{
-    url: String,
-    isMain: { type: Boolean, default: false }
-  }],
-  pricePerHour: {
-    type: Number,
-    required: [true, 'Le prix par heure est requis'],
-    min: [0, 'Le prix doit être positif']
-  },
-  pricePerDay: {
-    type: Number,
-    required: [true, 'Le prix par jour est requis'],
-    min: [0, 'Le prix doit être positif']
-  },
-  location: {
-    type: {
+const tractorSchema = new mongoose.Schema(
+  {
+    nom: {
       type: String,
-      enum: ['Point'],
-      default: 'Point'
+      required: [true, 'Le nom du tracteur est requis'],
+      trim: true,
     },
-    coordinates: {
-      type: [Number], // [longitude, latitude]
-      required: true
+    marque: {
+      type: String,
+      required: [true, 'La marque est requise'],
+      trim: true,
     },
-    address: String,
-    ville: String,
-    region: String
+    modele: {
+      type: String,
+      required: [true, 'Le modèle est requis'],
+      trim: true,
+    },
+    annee: {
+      type: Number,
+      required: [true, 'L\'année est requise'],
+    },
+    puissance: {
+      type: Number,
+      required: [true, 'La puissance est requise'],
+    },
+    description: {
+      type: String,
+      trim: true,
+    },
+    prixParHectare: {
+      type: Number,
+      required: [true, 'Le prix par hectare est requis'],
+      min: [0, 'Le prix ne peut pas être négatif'],
+    },
+    // Localisation
+    localisation: {
+      adresse: { type: String, trim: true },
+      ville: { type: String, trim: true },
+      region: { type: String, required: true, trim: true },
+      coordinates: {
+        latitude: { type: Number },
+        longitude: { type: Number },
+      },
+    },
+    // Propriétaire
+    owner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    // Images
+    images: [{
+      url: { type: String, required: true },
+      isPrimary: { type: Boolean, default: false },
+    }],
+    // Équipements inclus
+    equipements: [{
+      type: String,
+      trim: true,
+    }],
+    // État et disponibilité
+    etat: {
+      type: String,
+      enum: ['neuf', 'excellent', 'bon', 'moyen', 'a_renover'],
+      default: 'bon',
+    },
+    disponible: {
+      type: Boolean,
+      default: true,
+    },
+    isApproved: {
+      type: Boolean,
+      default: true,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+    // Statistiques
+    stats: {
+      totalBookings: { type: Number, default: 0 },
+      totalRevenue: { type: Number, default: 0 },
+      rating: { type: Number, default: 0 },
+      reviewCount: { type: Number, default: 0 },
+    },
+    // Périodes d'indisponibilité
+    indisponibilites: [{
+      startDate: { type: Date },
+      endDate: { type: Date },
+      reason: { type: String },
+    }],
   },
-  owner: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  isAvailable: {
-    type: Boolean,
-    default: true
-  },
-  isApproved: {
-    type: Boolean,
-    default: false
-  },
-  rating: {
-    type: Number,
-    default: 0,
-    min: 0,
-    max: 5
-  },
-  totalReviews: {
-    type: Number,
-    default: 0
-  },
-  totalBookings: {
-    type: Number,
-    default: 0
-  },
-  // Disponibilités (jours bloqués)
-  blockedDates: [{
-    startDate: Date,
-    endDate: Date,
-    reason: String
-  }],
-  // Statistiques
-  stats: {
-    totalEarnings: { type: Number, default: 0 },
-    totalHoursRented: { type: Number, default: 0 },
-    totalDaysRented: { type: Number, default: 0 }
+  {
+    timestamps: true,
   }
-}, {
-  timestamps: true
+);
+
+// Index pour recherche et filtrage
+tractorSchema.index({ 'localisation.region': 1 });
+tractorSchema.index({ prixParHectare: 1 });
+tractorSchema.index({ disponible: 1 });
+tractorSchema.index({ owner: 1 });
+tractorSchema.index({ marque: 'text', modele: 'text', nom: 'text' });
+
+// Virtual pour l'image principale
+tractorSchema.virtual('imagePrincipale').get(function () {
+  if (!this.images || this.images.length === 0) return null;
+  const primary = this.images.find(img => img.isPrimary);
+  return primary ? primary.url : (this.images[0]?.url || null);
 });
 
-// Index géospatial pour la recherche par proximité
-TractorSchema.index({ location: '2dsphere' });
-
-// Index pour la recherche
-TractorSchema.index({ name: 'text', brand: 'text', description: 'text' });
-
-// Méthode statique pour rechercher des tracteurs à proximité
-TractorSchema.statics.findNearby = function(longitude, latitude, maxDistance = 50000) {
-  return this.find({
-    location: {
-      $near: {
-        $geometry: {
-          type: 'Point',
-          coordinates: [longitude, latitude]
-        },
-        $maxDistance: maxDistance // en mètres
-      }
-    },
-    isAvailable: true,
-    isApproved: true
+// Méthode pour vérifier la disponibilité sur une période
+tractorSchema.methods.isAvailableForPeriod = function (startDate, endDate) {
+  if (!this.disponible) return false;
+  
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  return !this.indisponibilites.some(period => {
+    const periodStart = new Date(period.startDate);
+    const periodEnd = new Date(period.endDate);
+    return (start <= periodEnd && end >= periodStart);
   });
 };
 
-// Méthode pour vérifier la disponibilité pour une période
-TractorSchema.methods.isAvailableForPeriod = function(startDate, endDate) {
-  if (!this.isAvailable || !this.isApproved) return false;
+tractorSchema.set('toJSON', { virtuals: true });
+tractorSchema.set('toObject', { virtuals: true });
 
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-
-  for (const blocked of this.blockedDates) {
-    const blockedStart = new Date(blocked.startDate);
-    const blockedEnd = new Date(blocked.endDate);
-
-    // Vérifier si les périodes se chevauchent
-    if (start <= blockedEnd && end >= blockedStart) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
-module.exports = mongoose.model('Tractor', TractorSchema);
+module.exports = mongoose.model('Tractor', tractorSchema);

@@ -1,55 +1,72 @@
-// Classe d'erreur personnalisée
-class ErrorResponse extends Error {
+// Gestion centralisée des erreurs
+
+class AppError extends Error {
   constructor(message, statusCode) {
     super(message);
     this.statusCode = statusCode;
+    this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
+    this.isOperational = true;
+
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
-// Middleware de gestion des erreurs
 const errorHandler = (err, req, res, next) => {
-  let error = { ...err };
-  error.message = err.message;
+  err.statusCode = err.statusCode || 500;
+  err.status = err.status || 'error';
 
-  // Log pour le développement
-  console.error(err);
-
-  // Erreur d'ID MongoDB invalide
-  if (err.name === 'CastError') {
-    const message = 'Ressource non trouvée';
-    error = new ErrorResponse(message, 404);
+  // Erreur de développement : afficher tous les détails
+  if (process.env.NODE_ENV === 'development') {
+    return res.status(err.statusCode).json({
+      success: false,
+      error: err.message,
+      stack: err.stack,
+      details: err,
+    });
   }
 
-  // Erreur de duplication MongoDB
+  // Erreur de production : ne pas exposer les détails internes
+  
+  // Erreur Mongoose : CastError (ID invalide)
+  if (err.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      error: 'Ressource non trouvée',
+    });
+  }
+
+  // Erreur Mongoose : Duplicate key
   if (err.code === 11000) {
     const field = Object.keys(err.keyValue)[0];
-    const message = `${field} existe déjà`;
-    error = new ErrorResponse(message, 400);
+    return res.status(400).json({
+      success: false,
+      error: `Cette valeur de ${field} existe déjà`,
+    });
   }
 
-  // Erreur de validation Mongoose
+  // Erreur Mongoose : Validation
   if (err.name === 'ValidationError') {
-    const message = Object.values(err.errors).map(val => val.message).join(', ');
-    error = new ErrorResponse(message, 400);
+    const errors = Object.values(err.errors).map(e => e.message);
+    return res.status(400).json({
+      success: false,
+      error: errors.join(', '),
+    });
   }
 
-  // Erreur JWT
-  if (err.name === 'JsonWebTokenError') {
-    const message = 'Token invalide';
-    error = new ErrorResponse(message, 401);
+  // Erreur opérationnelle connue
+  if (err.isOperational) {
+    return res.status(err.statusCode).json({
+      success: false,
+      error: err.message,
+    });
   }
 
-  // Erreur JWT expiré
-  if (err.name === 'TokenExpiredError') {
-    const message = 'Token expiré';
-    error = new ErrorResponse(message, 401);
-  }
-
-  res.status(error.statusCode || 500).json({
+  // Erreur inconnue
+  console.error('ERREUR:', err);
+  return res.status(500).json({
     success: false,
-    message: error.message || 'Erreur serveur',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    error: 'Une erreur est survenue',
   });
 };
 
-module.exports = { ErrorResponse, errorHandler };
+module.exports = { AppError, errorHandler };

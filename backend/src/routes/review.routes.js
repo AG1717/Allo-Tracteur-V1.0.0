@@ -8,18 +8,18 @@ const {
   reportReview,
   hideReview
 } = require('../controllers/review.controller');
-const { protect, authorize } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 
 // Routes publiques
 router.get('/tractor/:tractorId', getTractorReviews);
 router.get('/user/:userId', getUserReviews);
 
 // Routes protégées
-router.post('/', protect, createReview);
-router.put('/:id/respond', protect, respondToReview);
-router.post('/:id/report', protect, reportReview);
+router.post('/', auth, createReview);
+router.put('/:id/respond', auth, respondToReview);
+router.post('/:id/report', auth, reportReview);
 
 // Routes admin
-router.put('/:id/hide', protect, authorize('admin'), hideReview);
+router.put('/:id/hide', auth, authorize('admin'), hideReview);
 
 module.exports = router;

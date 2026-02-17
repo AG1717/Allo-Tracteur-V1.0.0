@@ -1,85 +1,125 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-// Protéger les routes - Vérifier le token JWT
-exports.protect = async (req, res, next) => {
-  let token;
-
-  // Vérifier si le header Authorization contient un Bearer token
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
-  }
-
-  // Vérifier si le token existe
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      message: 'Non autorisé - Token manquant'
-    });
-  }
-
+// Middleware d'authentification
+const auth = async (req, res, next) => {
   try {
-    // Vérifier le token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret_temporaire');
+    // Récupérer le token du header
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentification requise',
+      });
+    }
 
-    // Trouver l'utilisateur
-    const user = await User.findById(decoded.id);
+    const token = authHeader.split(' ')[1];
+
+    // Vérifier le token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Récupérer l'utilisateur
+    const user = await User.findById(decoded.userId);
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Non autorisé - Utilisateur non trouvé'
+        error: 'Utilisateur non trouvé',
       });
     }
 
     if (!user.isActive) {
       return res.status(401).json({
         success: false,
-        message: 'Compte désactivé'
+        error: 'Compte désactivé',
       });
     }
 
     // Ajouter l'utilisateur à la requête
     req.user = user;
+    req.userId = user._id;
+
     next();
   } catch (error) {
-    console.error('Erreur auth middleware:', error);
-    return res.status(401).json({
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        success: false,
+        error: 'Token invalide',
+      });
+    }
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        success: false,
+        error: 'Token expiré',
+      });
+    }
+    res.status(500).json({
       success: false,
-      message: 'Non autorisé - Token invalide'
+      error: 'Erreur d\'authentification',
     });
   }
 };
 
-// Middleware pour vérifier les rôles
-exports.authorize = (...roles) => {
+// Middleware pour vérifier le rôle
+const authorize = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: `Le rôle ${req.user.role} n'est pas autorisé à accéder à cette ressource`
+        error: 'Accès non autorisé pour ce rôle',
       });
     }
     next();
   };
 };
 
-// Middleware optionnel - Ajoute l'utilisateur s'il est connecté
-exports.optionalAuth = async (req, res, next) => {
-  let token;
+// Middleware optionnel d'authentification (ne bloque pas si pas de token)
+const optionalAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const user = await User.findById(decoded.userId);
+      
+      if (user && user.isActive) {
+        req.user = user;
+        req.userId = user._id;
+      }
+    }
+    
+    next();
+  } catch (error) {
+    // En cas d'erreur, on continue sans utilisateur
+    next();
+  }
+};
 
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
+// Middleware spécifique pour les admins
+const adminOnly = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentification requise',
+    });
   }
 
-  if (token) {
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret_temporaire');
-      req.user = await User.findById(decoded.id);
-    } catch (error) {
-      // Token invalide mais on continue quand même
-    }
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      error: 'Accès réservé aux administrateurs',
+    });
   }
 
   next();
+};
+
+module.exports = {
+  auth,
+  protect: auth, // Alias pour compatibilité
+  authorize,
+  optionalAuth,
+  adminOnly,
 };

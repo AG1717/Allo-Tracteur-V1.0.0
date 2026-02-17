@@ -6,12 +6,25 @@ const { ErrorResponse } = require('../middleware/errorHandler');
 // @access  Public
 exports.register = async (req, res, next) => {
   try {
-    const { nom, prenom, email, telephone, password, role } = req.body;
+    const { nom, prenom, email, telephone, password, role, adminSecretCode } = req.body;
+
+    // Vérifier si quelqu'un essaie de créer un compte admin
+    if (role === 'admin') {
+      // Vérifier le code secret admin
+      if (!adminSecretCode || adminSecretCode !== process.env.ADMIN_SECRET_CODE) {
+        return res.status(403).json({
+          success: false,
+          message: 'Code secret admin invalide. Vous ne pouvez pas créer de compte administrateur.'
+        });
+      }
+    }
 
     // Vérifier si l'utilisateur existe déjà
-    const existingUser = await User.findOne({
-      $or: [{ email }, { telephone }]
-    });
+    const orConditions = [{ telephone }];
+    if (email) {
+      orConditions.push({ email });
+    }
+    const existingUser = await User.findOne({ $or: orConditions });
 
     if (existingUser) {
       return res.status(400).json({
@@ -20,15 +33,18 @@ exports.register = async (req, res, next) => {
       });
     }
 
-    // Créer l'utilisateur
-    const user = await User.create({
+    // Créer l'utilisateur (par défaut client si pas de rôle spécifié)
+    const userData = {
       nom,
       prenom,
-      email,
       telephone,
       password,
       role: role || 'client'
-    });
+    };
+    if (email) {
+      userData.email = email;
+    }
+    const user = await User.create(userData);
 
     sendTokenResponse(user, 201, res);
   } catch (error) {
@@ -52,8 +68,11 @@ exports.login = async (req, res, next) => {
     }
 
     // Trouver l'utilisateur
+    const loginConditions = [];
+    if (email) loginConditions.push({ email });
+    if (telephone) loginConditions.push({ telephone });
     const user = await User.findOne({
-      $or: [{ email }, { telephone }]
+      $or: loginConditions
     }).select('+password');
 
     if (!user) {

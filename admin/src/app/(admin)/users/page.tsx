@@ -4,16 +4,15 @@ import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import StatusBadge from '@/components/StatusBadge';
 import UserModal from '@/components/UserModal';
-import { users as initialUsers, User, addUser, updateUser, deleteUser } from '@/lib/mock-data';
+import { getAllUsers, verifyUser, updateUserStatus, createUser, deleteUser, type User } from '@/lib/api';
 import {
   MagnifyingGlassIcon,
-  PlusIcon,
-  PencilIcon,
-  TrashIcon,
   EyeIcon,
   CheckCircleIcon,
   XCircleIcon,
-  ExclamationTriangleIcon,
+  ArrowPathIcon,
+  PlusIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 
 const roleLabels: Record<string, string> = {
@@ -23,64 +22,139 @@ const roleLabels: Record<string, string> = {
 };
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [showUserDetails, setShowUserDetails] = useState<User | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
-  const [showUserDetails, setShowUserDetails] = useState<User | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  // Sync with mock data
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      const data = await getAllUsers();
+      setUsers(data);
+    } catch (error) {
+      console.error('Erreur lors du chargement des utilisateurs:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setUsers([...initialUsers]);
+    loadUsers();
   }, []);
 
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
       user.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.prenom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase());
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      false;
     const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
+
+    let matchesStatus = true;
+    if (statusFilter === 'active') {
+      matchesStatus = user.isActive && user.isVerified;
+    } else if (statusFilter === 'inactive') {
+      matchesStatus = !user.isActive;
+    } else if (statusFilter === 'pending') {
+      matchesStatus = user.isActive && !user.isVerified;
+    }
+
     return matchesSearch && matchesRole && matchesStatus;
   });
 
-  const handleAddUser = () => {
-    setModalMode('add');
-    setSelectedUser(null);
-    setIsModalOpen(true);
-  };
-
-  const handleEditUser = (user: User) => {
-    setModalMode('edit');
-    setSelectedUser(user);
-    setIsModalOpen(true);
-  };
-
-  const handleSaveUser = (userData: Partial<User>) => {
-    if (modalMode === 'add') {
-      const newUser = addUser(userData as Omit<User, 'id' | 'createdAt'>);
-      setUsers([...initialUsers]);
-    } else if (selectedUser) {
-      updateUser(selectedUser.id, userData);
-      setUsers([...initialUsers]);
+  const handleVerifyUser = async (userId: string) => {
+    try {
+      await verifyUser(userId);
+      await loadUsers();
+    } catch (error) {
+      console.error('Erreur lors de la vérification:', error);
     }
   };
 
-  const handleDeleteUser = (id: string) => {
-    deleteUser(id);
-    setUsers([...initialUsers]);
-    setShowDeleteConfirm(null);
+  const handleToggleStatus = async (user: User) => {
+    try {
+      await updateUserStatus(user._id, !user.isActive);
+      await loadUsers();
+    } catch (error) {
+      console.error('Erreur lors du changement de statut:', error);
+    }
   };
 
-  const handleToggleStatus = (user: User) => {
-    const newStatus = user.status === 'active' ? 'inactive' : 'active';
-    updateUser(user.id, { status: newStatus });
-    setUsers([...initialUsers]);
+  const handleAddUser = () => {
+    setSelectedUser(null);
+    setModalMode('add');
+    setIsModalOpen(true);
   };
+
+  const handleSaveUser = async (userData: Partial<User>) => {
+    try {
+      if (modalMode === 'add') {
+        await createUser({
+          nom: userData.nom!,
+          prenom: userData.prenom!,
+          email: userData.email!,
+          telephone: userData.telephone!,
+          password: userData.password!,
+          role: userData.role as 'client' | 'proprietaire',
+          adresse: userData.adresse,
+          region: userData.region,
+        });
+      }
+      await loadUsers();
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde:', error);
+      alert('Erreur lors de la sauvegarde de l\'utilisateur');
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      await deleteUser(userId);
+      await loadUsers();
+      setDeleteConfirm(null);
+    } catch (error) {
+      console.error('Erreur lors de la suppression:', error);
+      alert('Erreur lors de la suppression de l\'utilisateur');
+    }
+  };
+
+  const getStatusForBadge = (user: User): 'active' | 'inactive' | 'pending' => {
+    if (!user.isActive) return 'inactive';
+    if (!user.isVerified) return 'pending';
+    return 'active';
+  };
+
+  const totalClients = users.filter(u => u.role === 'client').length;
+  const totalOwners = users.filter(u => u.role === 'proprietaire').length;
+  const totalAdmins = users.filter(u => u.role === 'admin').length;
+  const pendingUsers = users.filter(u => u.isActive && !u.isVerified).length;
+
+  if (loading) {
+    return (
+      <>
+        <Header
+          title="Utilisateurs"
+          subtitle="Chargement..."
+        />
+        <main className="flex-1 overflow-y-auto p-6">
+          <div className="flex h-64 items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-green-500"></div>
+              <p className="text-slate-500">Chargement des utilisateurs...</p>
+            </div>
+          </div>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>
@@ -92,29 +166,29 @@ export default function UsersPage() {
       <main className="flex-1 overflow-y-auto p-6">
         {/* Stats */}
         <div className="mb-6 grid gap-4 sm:grid-cols-4">
+          <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+            <p className="text-2xl font-bold text-slate-700">
+              {users.length}
+            </p>
+            <p className="text-sm text-slate-600">Total</p>
+          </div>
           <div className="rounded-xl bg-blue-50 border border-blue-200 p-4">
             <p className="text-2xl font-bold text-blue-700">
-              {users.filter(u => u.role === 'client').length}
+              {totalClients}
             </p>
             <p className="text-sm text-blue-600">Clients</p>
           </div>
           <div className="rounded-xl bg-green-50 border border-green-200 p-4">
             <p className="text-2xl font-bold text-green-700">
-              {users.filter(u => u.role === 'proprietaire').length}
+              {totalOwners}
             </p>
             <p className="text-sm text-green-600">Propriétaires</p>
           </div>
-          <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-4">
-            <p className="text-2xl font-bold text-yellow-700">
-              {users.filter(u => u.status === 'pending').length}
+          <div className="rounded-xl bg-purple-50 border border-purple-200 p-4">
+            <p className="text-2xl font-bold text-purple-700">
+              {totalAdmins}
             </p>
-            <p className="text-sm text-yellow-600">En attente</p>
-          </div>
-          <div className="rounded-xl bg-red-50 border border-red-200 p-4">
-            <p className="text-2xl font-bold text-red-700">
-              {users.filter(u => u.status === 'inactive').length}
-            </p>
-            <p className="text-sm text-red-600">Inactifs</p>
+            <p className="text-sm text-purple-600">Admins</p>
           </div>
         </div>
 
@@ -158,13 +232,22 @@ export default function UsersPage() {
             </select>
           </div>
 
-          <button
-            onClick={handleAddUser}
-            className="flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-600 transition-colors"
-          >
-            <PlusIcon className="h-5 w-5" />
-            Ajouter un utilisateur
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleAddUser}
+              className="flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-600 transition-colors"
+            >
+              <PlusIcon className="h-5 w-5" />
+              Ajouter un utilisateur
+            </button>
+            <button
+              onClick={loadUsers}
+              className="flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              <ArrowPathIcon className="h-5 w-5" />
+              Actualiser
+            </button>
+          </div>
         </div>
 
         {/* Table */}
@@ -195,12 +278,14 @@ export default function UsersPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={user._id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className={`flex h-10 w-10 items-center justify-center rounded-full font-semibold ${
                           user.role === 'proprietaire'
                             ? 'bg-green-100 text-green-700'
+                            : user.role === 'admin'
+                            ? 'bg-purple-100 text-purple-700'
                             : 'bg-blue-100 text-blue-700'
                         }`}>
                           {user.prenom[0]}{user.nom[0]}
@@ -229,19 +314,9 @@ export default function UsersPage() {
                       }`}>
                         {roleLabels[user.role]}
                       </span>
-                      {user.role === 'proprietaire' && user.nombreTracteurs && (
-                        <p className="mt-1 text-xs text-slate-500">
-                          {user.nombreTracteurs} tracteur{user.nombreTracteurs > 1 ? 's' : ''}
-                        </p>
-                      )}
                     </td>
                     <td className="px-6 py-4">
-                      <button
-                        onClick={() => handleToggleStatus(user)}
-                        className="group"
-                      >
-                        <StatusBadge status={user.status} type="user" />
-                      </button>
+                      <StatusBadge status={getStatusForBadge(user)} type="user" />
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-500">
                       {new Date(user.createdAt).toLocaleDateString('fr-FR')}
@@ -255,20 +330,39 @@ export default function UsersPage() {
                         >
                           <EyeIcon className="h-5 w-5" />
                         </button>
+                        {!user.isVerified && user.isActive && (
+                          <button
+                            onClick={() => handleVerifyUser(user._id)}
+                            className="rounded-lg p-2 text-green-400 hover:bg-green-100 hover:text-green-600 transition-colors"
+                            title="Vérifier l'utilisateur"
+                          >
+                            <CheckCircleIcon className="h-5 w-5" />
+                          </button>
+                        )}
                         <button
-                          onClick={() => handleEditUser(user)}
-                          className="rounded-lg p-2 text-slate-400 hover:bg-blue-100 hover:text-blue-600 transition-colors"
-                          title="Modifier"
+                          onClick={() => handleToggleStatus(user)}
+                          className={`rounded-lg p-2 transition-colors ${
+                            user.isActive
+                              ? 'text-red-400 hover:bg-red-100 hover:text-red-600'
+                              : 'text-green-400 hover:bg-green-100 hover:text-green-600'
+                          }`}
+                          title={user.isActive ? 'Désactiver' : 'Activer'}
                         >
-                          <PencilIcon className="h-5 w-5" />
+                          {user.isActive ? (
+                            <XCircleIcon className="h-5 w-5" />
+                          ) : (
+                            <CheckCircleIcon className="h-5 w-5" />
+                          )}
                         </button>
-                        <button
-                          onClick={() => setShowDeleteConfirm(user.id)}
-                          className="rounded-lg p-2 text-slate-400 hover:bg-red-100 hover:text-red-600 transition-colors"
-                          title="Supprimer"
-                        >
-                          <TrashIcon className="h-5 w-5" />
-                        </button>
+                        {user.role !== 'admin' && (
+                          <button
+                            onClick={() => setDeleteConfirm(user._id)}
+                            className="rounded-lg p-2 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
+                            title="Supprimer l'utilisateur"
+                          >
+                            <TrashIcon className="h-5 w-5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -285,7 +379,7 @@ export default function UsersPage() {
         </div>
       </main>
 
-      {/* Add/Edit Modal */}
+      {/* User Modal */}
       <UserModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -295,31 +389,25 @@ export default function UsersPage() {
       />
 
       {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
+      {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(null)} />
-          <div className="relative rounded-2xl bg-white p-6 shadow-xl mx-4 max-w-md">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="rounded-full bg-red-100 p-3">
-                <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">Supprimer l&apos;utilisateur</h3>
-                <p className="text-sm text-slate-500">Cette action est irréversible</p>
-              </div>
-            </div>
-            <p className="mb-6 text-slate-600">
-              Êtes-vous sûr de vouloir supprimer cet utilisateur ? Toutes ses données seront perdues.
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative rounded-2xl bg-white p-6 shadow-xl mx-4 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">
+              Confirmer la suppression
+            </h3>
+            <p className="text-slate-600 mb-6">
+              Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible.
             </p>
             <div className="flex gap-3">
               <button
-                onClick={() => setShowDeleteConfirm(null)}
+                onClick={() => setDeleteConfirm(null)}
                 className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
               >
                 Annuler
               </button>
               <button
-                onClick={() => handleDeleteUser(showDeleteConfirm)}
+                onClick={() => handleDeleteUser(deleteConfirm)}
                 className="flex-1 rounded-lg bg-red-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-600 transition-colors"
               >
                 Supprimer
@@ -338,6 +426,8 @@ export default function UsersPage() {
               <div className={`flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold ${
                 showUserDetails.role === 'proprietaire'
                   ? 'bg-green-100 text-green-700'
+                  : showUserDetails.role === 'admin'
+                  ? 'bg-purple-100 text-purple-700'
                   : 'bg-blue-100 text-blue-700'
               }`}>
                 {showUserDetails.prenom[0]}{showUserDetails.nom[0]}
@@ -349,6 +439,8 @@ export default function UsersPage() {
                 <p className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                   showUserDetails.role === 'proprietaire'
                     ? 'bg-green-100 text-green-800'
+                    : showUserDetails.role === 'admin'
+                    ? 'bg-purple-100 text-purple-800'
                     : 'bg-blue-100 text-blue-800'
                 }`}>
                   {roleLabels[showUserDetails.role]}
@@ -378,7 +470,7 @@ export default function UsersPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-slate-500 uppercase">Statut</p>
-                  <StatusBadge status={showUserDetails.status} type="user" />
+                  <StatusBadge status={getStatusForBadge(showUserDetails)} type="user" />
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 uppercase">Inscrit le</p>
@@ -388,12 +480,20 @@ export default function UsersPage() {
                 </div>
               </div>
 
-              {showUserDetails.role === 'proprietaire' && (
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-slate-500 uppercase">Nombre de tracteurs</p>
-                  <p className="font-medium text-slate-900">{showUserDetails.nombreTracteurs || 0}</p>
+                  <p className="text-xs text-slate-500 uppercase">Vérifié</p>
+                  <p className="font-medium text-slate-900">
+                    {showUserDetails.isVerified ? 'Oui' : 'Non'}
+                  </p>
                 </div>
-              )}
+                <div>
+                  <p className="text-xs text-slate-500 uppercase">Actif</p>
+                  <p className="font-medium text-slate-900">
+                    {showUserDetails.isActive ? 'Oui' : 'Non'}
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="mt-6 flex gap-3">
@@ -403,15 +503,17 @@ export default function UsersPage() {
               >
                 Fermer
               </button>
-              <button
-                onClick={() => {
-                  setShowUserDetails(null);
-                  handleEditUser(showUserDetails);
-                }}
-                className="flex-1 rounded-lg bg-green-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-600 transition-colors"
-              >
-                Modifier
-              </button>
+              {!showUserDetails.isVerified && showUserDetails.isActive && (
+                <button
+                  onClick={() => {
+                    handleVerifyUser(showUserDetails._id);
+                    setShowUserDetails(null);
+                  }}
+                  className="flex-1 rounded-lg bg-green-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-600 transition-colors"
+                >
+                  Vérifier
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -9,17 +9,17 @@ const {
   sendSystemNotification,
   broadcastNotification
 } = require('../controllers/notification.controller');
-const { protect, authorize } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 
 // Routes utilisateur
-router.get('/', protect, getMyNotifications);
-router.put('/:id/read', protect, markAsRead);
-router.put('/read-all', protect, markAllAsRead);
-router.delete('/:id', protect, deleteNotification);
-router.delete('/clear-read', protect, clearReadNotifications);
+router.get('/', auth, getMyNotifications);
+router.put('/read-all', auth, markAllAsRead);
+router.put('/:id/read', auth, markAsRead);
+router.delete('/clear-read', auth, clearReadNotifications);
+router.delete('/:id', auth, deleteNotification);
 
 // Routes admin
-router.post('/system', protect, authorize('admin'), sendSystemNotification);
-router.post('/broadcast', protect, authorize('admin'), broadcastNotification);
+router.post('/system', auth, authorize('admin'), sendSystemNotification);
+router.post('/broadcast', auth, authorize('admin'), broadcastNotification);
 
 module.exports = router;

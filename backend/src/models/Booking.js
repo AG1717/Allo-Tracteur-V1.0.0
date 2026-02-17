@@ -1,140 +1,173 @@
 const mongoose = require('mongoose');
 
-const BookingSchema = new mongoose.Schema({
-  reference: {
-    type: String,
-    unique: true,
-    required: true
-  },
-  client: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  tractor: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Tractor',
-    required: true
-  },
-  owner: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  startDate: {
-    type: Date,
-    required: [true, 'La date de début est requise']
-  },
-  endDate: {
-    type: Date,
-    required: [true, 'La date de fin est requise']
-  },
-  duration: {
-    type: Number, // en jours
-    required: true
-  },
-  durationType: {
-    type: String,
-    enum: ['hour', 'day'],
-    default: 'day'
-  },
-  status: {
-    type: String,
-    enum: ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rejected'],
-    default: 'pending'
-  },
-  pricing: {
-    basePrice: { type: Number, required: true },
-    platformFee: { type: Number, required: true }, // Commission plateforme (10%)
-    ownerAmount: { type: Number, required: true }, // Montant propriétaire
-    totalPrice: { type: Number, required: true }
-  },
-  location: {
-    pickup: {
-      address: String,
-      coordinates: {
-        latitude: Number,
-        longitude: Number
-      }
-    },
-    delivery: {
-      address: String,
-      coordinates: {
-        latitude: Number,
-        longitude: Number
-      }
-    }
-  },
-  notes: {
-    client: String,
-    owner: String
-  },
-  cancellation: {
-    cancelledBy: {
+const bookingSchema = new mongoose.Schema(
+  {
+    // Références
+    tractor: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      ref: 'Tractor',
+      required: true,
     },
-    reason: String,
-    cancelledAt: Date,
-    refundAmount: Number
-  },
-  // Historique des statuts
-  statusHistory: [{
-    status: String,
-    changedAt: { type: Date, default: Date.now },
-    changedBy: {
+    client: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      ref: 'User',
+      required: true,
     },
-    note: String
-  }],
-  payment: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Payment'
+    owner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    // Informations de contact (copiées pour historique)
+    clientPhone: {
+      type: String,
+      required: true,
+    },
+    ownerPhone: {
+      type: String,
+      required: true,
+    },
+    // Dates de réservation (optionnelles - utilisées pour planification uniquement)
+    startDate: {
+      type: Date,
+    },
+    endDate: {
+      type: Date,
+    },
+    // Tarification
+    prixParHectare: {
+      type: Number,
+      required: true,
+    },
+    nombreHectares: {
+      type: Number,
+      required: [true, 'Le nombre d\'hectares est requis'],
+      min: [0.01, 'Le nombre d\'hectares doit être d\'au moins 0.01 ha'],
+    },
+    surfaceMetresCarres: {
+      type: Number,
+      // Optionnel - si fourni, sera converti en hectares (1 ha = 10000 m²)
+    },
+    nombreJours: {
+      type: Number,
+      // Optionnel - utilisé uniquement pour la planification, pas pour le calcul du prix
+    },
+    totalPrice: {
+      type: Number,
+      required: true,
+    },
+    // Commission de la plateforme (10%)
+    commission: {
+      type: Number,
+      default: 0,
+    },
+    ownerEarnings: {
+      type: Number,
+      default: 0,
+    },
+    // Statut
+    status: {
+      type: String,
+      enum: ['pending', 'accepted', 'rejected', 'cancelled', 'completed', 'in_progress'],
+      default: 'pending',
+    },
+    // Paiement
+    payment: {
+      method: {
+        type: String,
+        enum: ['orange_money', 'wave', 'card', 'cash'],
+        required: true,
+      },
+      status: {
+        type: String,
+        enum: ['pending', 'completed', 'failed', 'refunded'],
+        default: 'pending',
+      },
+      transactionId: String,
+      paidAt: Date,
+      // Détails spécifiques selon le provider
+      providerData: {
+        type: mongoose.Schema.Types.Mixed,
+      },
+    },
+    // Notes et motifs
+    notes: {
+      type: String,
+      trim: true,
+    },
+    rejectionReason: {
+      type: String,
+      trim: true,
+    },
+    cancellationReason: {
+      type: String,
+      trim: true,
+    },
+    // Avis client
+    review: {
+      rating: { type: Number, min: 1, max: 5 },
+      comment: { type: String, trim: true },
+      createdAt: { type: Date },
+    },
+    // Historique des changements de statut
+    statusHistory: [{
+      status: { type: String },
+      changedAt: { type: Date, default: Date.now },
+      changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      note: { type: String },
+    }],
   },
-  hasReview: {
-    type: Boolean,
-    default: false
+  {
+    timestamps: true,
   }
-}, {
-  timestamps: true
-});
+);
 
-// Générer une référence unique avant sauvegarde
-BookingSchema.pre('save', async function(next) {
-  if (!this.reference) {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-    this.reference = `AT${year}${month}-${random}`;
+// Index pour recherche rapide
+bookingSchema.index({ client: 1, createdAt: -1 });
+bookingSchema.index({ owner: 1, createdAt: -1 });
+bookingSchema.index({ tractor: 1 });
+bookingSchema.index({ status: 1 });
+bookingSchema.index({ startDate: 1, endDate: 1 });
+
+// Middleware pour convertir m² en hectares si nécessaire
+bookingSchema.pre('save', function (next) {
+  // Si surfaceMetresCarres est fourni, convertir en hectares (1 ha = 10000 m²)
+  if (this.surfaceMetresCarres && this.isModified('surfaceMetresCarres')) {
+    this.nombreHectares = this.surfaceMetresCarres / 10000;
   }
   next();
 });
 
-// Calculer la durée automatiquement
-BookingSchema.pre('save', function(next) {
-  if (this.startDate && this.endDate) {
-    const diffTime = Math.abs(this.endDate - this.startDate);
-    this.duration = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+// Middleware pour calculer les montants avant sauvegarde
+bookingSchema.pre('save', function (next) {
+  if (this.isModified('prixParHectare') || this.isModified('nombreHectares')) {
+    this.totalPrice = this.prixParHectare * this.nombreHectares;
+    this.commission = Math.round(this.totalPrice * 0.10); // 10% commission
+    this.ownerEarnings = this.totalPrice - this.commission;
   }
   next();
 });
 
-// Index pour les recherches
-BookingSchema.index({ client: 1, status: 1 });
-BookingSchema.index({ owner: 1, status: 1 });
-BookingSchema.index({ tractor: 1, startDate: 1, endDate: 1 });
-BookingSchema.index({ reference: 1 });
+// Middleware pour ajouter au statusHistory
+bookingSchema.pre('save', function (next) {
+  if (this.isModified('status')) {
+    this.statusHistory.push({
+      status: this.status,
+      changedAt: new Date(),
+    });
+  }
+  next();
+});
 
-// Méthode pour ajouter un changement de statut à l'historique
-BookingSchema.methods.addStatusChange = function(status, userId, note = '') {
-  this.statusHistory.push({
-    status,
-    changedBy: userId,
-    note
-  });
-  this.status = status;
+// Méthode pour obtenir le nombre de jours
+bookingSchema.methods.calculateDays = function () {
+  const start = new Date(this.startDate);
+  const end = new Date(this.endDate);
+  const diffTime = Math.abs(end - start);
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 };
 
-module.exports = mongoose.model('Booking', BookingSchema);
+bookingSchema.set('toJSON', { virtuals: true });
+bookingSchema.set('toObject', { virtuals: true });
+
+module.exports = mongoose.model('Booking', bookingSchema);

@@ -101,13 +101,13 @@ export default function LoginPage() {
           {/* Demo credentials */}
           <div className="mt-6 rounded-lg bg-slate-50 p-4">
             <p className="mb-2 text-xs font-medium text-slate-500 uppercase">
-              Identifiants de démonstration
+              Compte admin de test
             </p>
             <p className="text-sm text-slate-600">
-              Email: <span className="font-mono text-green-600">admin@allotracteur.sn</span>
+              Email: <span className="font-mono text-green-600">superadmin@allotracteur.sn</span>
             </p>
             <p className="text-sm text-slate-600">
-              Mot de passe: <span className="font-mono text-green-600">admin123</span>
+              Mot de passe: <span className="font-mono text-green-600">Admin2024!</span>
             </p>
           </div>
         </div>

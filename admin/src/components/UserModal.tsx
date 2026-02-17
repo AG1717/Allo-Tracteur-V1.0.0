@@ -1,13 +1,18 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { XMarkIcon, CameraIcon, PhotoIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { User } from '@/lib/mock-data';
+import { XMarkIcon, CameraIcon, PhotoIcon, TrashIcon, MapPinIcon } from '@heroicons/react/24/outline';
+import { User } from '@/lib/api';
 
 interface TractorPhoto {
   id: string;
   name: string;
   image: string | null;
+}
+
+interface UserFormData extends Partial<User> {
+  status?: 'active' | 'inactive';
+  nombreTracteurs?: number;
 }
 
 interface UserModalProps {
@@ -19,7 +24,7 @@ interface UserModalProps {
 }
 
 export default function UserModal({ isOpen, onClose, onSave, user, mode }: UserModalProps) {
-  const [formData, setFormData] = useState<Partial<User>>({
+  const [formData, setFormData] = useState<UserFormData>({
     nom: '',
     prenom: '',
     email: '',
@@ -28,10 +33,13 @@ export default function UserModal({ isOpen, onClose, onSave, user, mode }: UserM
     role: 'client',
     status: 'active',
     adresse: '',
+    region: '',
+    coordinates: undefined,
     nombreTracteurs: 1,
   });
 
   const [tractorPhotos, setTractorPhotos] = useState<TractorPhoto[]>([]);
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   // Initialize tractor photos based on nombreTracteurs
@@ -68,9 +76,11 @@ export default function UserModal({ isOpen, onClose, onSave, user, mode }: UserM
         email: user.email,
         telephone: user.telephone,
         role: user.role,
-        status: user.status,
+        status: user.isActive ? 'active' : 'inactive',
         adresse: user.adresse || '',
-        nombreTracteurs: user.nombreTracteurs || 1,
+        region: user.region || '',
+        coordinates: user.coordinates,
+        nombreTracteurs: 1,
       });
     } else {
       setFormData({
@@ -116,6 +126,32 @@ export default function UserModal({ isOpen, onClose, onSave, user, mode }: UserM
       prev.map(t =>
         t.id === tractorId ? { ...t, image: null } : t
       )
+    );
+  };
+
+  const handleGetLocation = () => {
+    if (!navigator.geolocation) {
+      alert('La géolocalisation n\'est pas supportée par votre navigateur');
+      return;
+    }
+
+    setIsLoadingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setFormData({
+          ...formData,
+          coordinates: {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          },
+        });
+        setIsLoadingLocation(false);
+      },
+      (error) => {
+        console.error('Erreur de géolocalisation:', error);
+        alert('Impossible d\'obtenir votre position. Veuillez vérifier les permissions de géolocalisation.');
+        setIsLoadingLocation(false);
+      }
     );
   };
 
@@ -266,19 +302,83 @@ export default function UserModal({ isOpen, onClose, onSave, user, mode }: UserM
           {/* Propriétaire-specific fields */}
           {formData.role === 'proprietaire' && (
             <>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Adresse / Localisation *
-                </label>
-                <input
-                  type="text"
-                  value={formData.adresse}
-                  onChange={(e) => setFormData({ ...formData, adresse: e.target.value })}
-                  placeholder="Ex: Dakar, Pikine"
-                  className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
-                  required={formData.role === 'proprietaire'}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Adresse *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.adresse}
+                    onChange={(e) => setFormData({ ...formData, adresse: e.target.value })}
+                    placeholder="Ex: Rue 10, Quartier Liberté"
+                    className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+                    required={formData.role === 'proprietaire'}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Région *
+                  </label>
+                  <select
+                    value={formData.region}
+                    onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+                    className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+                    required={formData.role === 'proprietaire'}
+                  >
+                    <option value="">Sélectionner une région</option>
+                    <option value="Dakar">Dakar</option>
+                    <option value="Thiès">Thiès</option>
+                    <option value="Diourbel">Diourbel</option>
+                    <option value="Fatick">Fatick</option>
+                    <option value="Kaolack">Kaolack</option>
+                    <option value="Kaffrine">Kaffrine</option>
+                    <option value="Kolda">Kolda</option>
+                    <option value="Louga">Louga</option>
+                    <option value="Matam">Matam</option>
+                    <option value="Saint-Louis">Saint-Louis</option>
+                    <option value="Sédhiou">Sédhiou</option>
+                    <option value="Tambacounda">Tambacounda</option>
+                    <option value="Kédougou">Kédougou</option>
+                    <option value="Ziguinchor">Ziguinchor</option>
+                  </select>
+                </div>
               </div>
+
+              {/* Géolocalisation */}
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <MapPinIcon className="h-5 w-5 text-blue-600" />
+                      <p className="text-sm font-medium text-blue-900">Position GPS</p>
+                    </div>
+                    {formData.coordinates?.latitude && formData.coordinates?.longitude ? (
+                      <div className="space-y-1">
+                        <p className="text-xs text-blue-700">
+                          ✓ Position enregistrée
+                        </p>
+                        <p className="text-xs text-blue-600 font-mono">
+                          {formData.coordinates.latitude.toFixed(6)}, {formData.coordinates.longitude.toFixed(6)}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-blue-700">
+                        Activez votre géolocalisation pour enregistrer votre position exacte
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGetLocation}
+                    disabled={isLoadingLocation}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isLoadingLocation ? 'Localisation...' : formData.coordinates?.latitude ? 'Actualiser' : 'Obtenir ma position'}
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Nombre de tracteurs
@@ -379,7 +479,7 @@ export default function UserModal({ isOpen, onClose, onSave, user, mode }: UserM
             </label>
             <select
               value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value as User['status'] })}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'inactive' })}
               className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
             >
               <option value="active">Actif</option>

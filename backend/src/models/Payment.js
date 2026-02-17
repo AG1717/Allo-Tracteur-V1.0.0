@@ -42,7 +42,7 @@ const PaymentSchema = new mongoose.Schema({
   },
   method: {
     type: String,
-    enum: ['orange_money', 'wave', 'cash', 'bank_transfer'],
+    enum: ['orange_money', 'wave', 'paydunya', 'cash', 'bank_transfer'],
     required: [true, 'La méthode de paiement est requise']
   },
   status: {
@@ -56,7 +56,13 @@ const PaymentSchema = new mongoose.Schema({
     providerReference: String,
     phoneNumber: String,
     responseCode: String,
-    responseMessage: String
+    responseMessage: String,
+    // PayDunya specific
+    invoiceToken: String,
+    // Orange Money specific
+    payToken: String,
+    // Wave specific
+    checkoutSessionId: String
   },
   // Informations de remboursement
   refund: {
@@ -98,7 +104,7 @@ PaymentSchema.index({ booking: 1 });
 PaymentSchema.index({ payer: 1 });
 PaymentSchema.index({ recipient: 1 });
 PaymentSchema.index({ status: 1 });
-PaymentSchema.index({ reference: 1 });
+// Note: reference a déjà un index via unique: true
 
 // Méthode pour marquer comme complété
 PaymentSchema.methods.markAsCompleted = function(providerData = {}) {

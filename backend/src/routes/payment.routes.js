@@ -7,21 +7,27 @@ const {
   getMyPayments,
   getReceivedPayments,
   getPaymentStats,
-  getAdminPaymentStats
+  getAdminPaymentStats,
+  initiateRefund,
+  getPaymentDetails
 } = require('../controllers/payment.controller');
-const { protect, authorize } = require('../middleware/auth');
+const { auth, authorize, adminOnly } = require('../middleware/auth');
 
 // Routes client
-router.post('/', protect, initiatePayment);
-router.get('/my-payments', protect, getMyPayments);
+router.post('/', auth, initiatePayment);
+router.get('/my-payments', auth, getMyPayments);
 
 // Routes propriétaire
-router.get('/received', protect, authorize('owner', 'admin'), getReceivedPayments);
-router.get('/stats', protect, authorize('owner', 'admin'), getPaymentStats);
+router.get('/received', auth, authorize('proprietaire', 'admin'), getReceivedPayments);
+router.get('/stats', auth, authorize('proprietaire', 'admin'), getPaymentStats);
 
-// Routes admin / webhook
-router.put('/:id/confirm', protect, authorize('admin'), confirmPayment);
-router.put('/:id/fail', protect, authorize('admin'), failPayment);
-router.get('/admin/stats', protect, authorize('admin'), getAdminPaymentStats);
+// Routes admin (statiques AVANT /:id)
+router.get('/admin/stats', auth, adminOnly, getAdminPaymentStats);
+
+// Routes dynamiques /:id (APRÈS les routes statiques)
+router.get('/:id', auth, adminOnly, getPaymentDetails);
+router.put('/:id/confirm', auth, adminOnly, confirmPayment);
+router.put('/:id/fail', auth, adminOnly, failPayment);
+router.post('/:id/refund', auth, adminOnly, initiateRefund);
 
 module.exports = router;
